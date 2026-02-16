@@ -1,0 +1,118 @@
+#include <SPI.h>
+#include <nRF24L01.h>
+#include <RF24.h>
+#include <Servo.h>
+
+#define CE_PIN   7
+#define CSN_PIN  9
+#define SERVO_H  14
+#define SERVO_V  15
+#define LASER_PIN 3
+#define LED_PIN   25
+
+const uint64_t pipe = 0xF0F0F0F0E1LL;
+
+struct Packet {
+  uint8_t id;
+  uint8_t cmd;
+  int8_t angH;
+  int8_t angV;
+  uint8_t mode;
+};
+
+RF24 radio(CE_PIN, CSN_PIN);
+Servo servoH, servoV;
+Packet rx;
+
+void setAngles(int8_t h, int8_t v) {
+  h = constrain(h, -40, 40);
+  v = constrain(v, -40, 40);
+  servoH.write(90 + h);
+  servoV.write(90 + v);
+  delay(300);
+}
+
+void scanHoriz() {
+  for (int8_t a = -40; a <= 40; a += 10) {
+    setAngles(a, 0);
+    delay(3000);
+  }
+}
+void scanVert() {
+  for (int8_t a = -40; a <= 40; a += 10) {
+    setAngles(0, a);
+    delay(3000);
+  }
+}
+void scanDiag1() {
+  for (int8_t a = -40; a <= 40; a += 10) {
+    setAngles(a, a);
+    delay(3000);
+  }
+}
+void scanDiag2() {
+  for (int8_t a = -40; a <= 40; a += 10) {
+    setAngles(a, -a);
+    delay(3000);
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(2000);
+  pinMode(LASER_PIN, OUTPUT);
+  digitalWrite(LASER_PIN, HIGH);
+  pinMode(LED_PIN, OUTPUT);
+  servoH.attach(SERVO_H);
+  servoV.attach(SERVO_V);
+  setAngles(0, 0);
+  if (!radio.begin()) {
+    while (1) {
+      digitalWrite(LED_PIN, HIGH); delay(200);
+      digitalWrite(LED_PIN, LOW); delay(200);
+    }
+  }
+  radio.setChannel(76);
+  radio.setDataRate(RF24_250KBPS);
+  radio.setPALevel(RF24_PA_HIGH);
+  radio.setAutoAck(false);
+  radio.setRetries(0, 0);
+  radio.setPayloadSize(sizeof(Packet));
+  radio.openReadingPipe(1, pipe);
+  radio.startListening();
+}
+
+void loop() {
+  if (radio.available()) {
+    radio.read(&rx, sizeof(rx));
+    if (rx.id != 1) return;
+    switch (rx.cmd) {
+      case 1:
+        setAngles(rx.angH, rx.angV);
+        break;
+      case 2:
+        switch (rx.mode) {
+          case 1: scanHoriz(); break;
+          case 2: scanVert(); break;
+          case 3: scanDiag1(); break;
+          case 4: scanDiag2(); break;
+        }
+        setAngles(0, 0);
+        break;
+      case 3:
+        digitalWrite(LASER_PIN, !digitalRead(LASER_PIN));
+        break;
+      case 4:
+        setAngles(-40, -40); delay(1000);
+        setAngles(40, 40); delay(1000);
+        setAngles(0, 0);
+        break;
+    }
+  }
+  static uint32_t lastBlink = 0;
+  if (millis() - lastBlink > 1000) {
+    lastBlink = millis();
+    digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+  }
+  delay(10);
+}
