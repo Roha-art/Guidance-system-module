@@ -1,0 +1,59 @@
+#include <SPI.h>
+#include <nRF24L01.h>
+#include <RF24.h>
+
+#define CE_PIN   2
+#define CSN_PIN  3
+
+const uint64_t pipe = 0xF0F0F0F0E1LL;
+
+struct Packet {
+  uint8_t id;
+  uint8_t cmd;
+  int8_t angH;
+  int8_t angV;
+  uint8_t mode;
+};
+
+RF24 radio(CE_PIN, CSN_PIN);
+Packet tx;
+
+void setup() {
+  Serial.begin(115200);
+  delay(2000);
+  if (!radio.begin()) {
+    while (1);
+  }
+  radio.setChannel(76);
+  radio.setDataRate(RF24_250KBPS);
+  radio.setPALevel(RF24_PA_HIGH);
+  radio.setAutoAck(false);
+  radio.setRetries(0, 0);
+  radio.setPayloadSize(sizeof(Packet));
+  radio.openWritingPipe(pipe);
+  radio.stopListening();
+  Serial.println("READY");
+}
+
+void loop() {
+  if (Serial.available()) {
+    char c = Serial.read();
+    switch (c) {
+      case 'w': tx = {2,1,0,10,0}; radio.write(&tx,sizeof(tx)); break;
+      case 's': tx = {2,1,0,-10,0}; radio.write(&tx,sizeof(tx)); break;
+      case 'a': tx = {2,1,-10,0,0}; radio.write(&tx,sizeof(tx)); break;
+      case 'd': tx = {2,1,10,0,0}; radio.write(&tx,sizeof(tx)); break;
+      case 'c': tx = {2,1,0,0,0}; radio.write(&tx,sizeof(tx)); break;
+      case 'r': tx = {2,1,(int8_t)random(-40,41),(int8_t)random(-40,41),0}; radio.write(&tx,sizeof(tx)); break;
+      case '1': tx = {2,2,0,0,1}; radio.write(&tx,sizeof(tx)); break;
+      case '2': tx = {2,2,0,0,2}; radio.write(&tx,sizeof(tx)); break;
+      case '3': tx = {2,2,0,0,3}; radio.write(&tx,sizeof(tx)); break;
+      case '4': tx = {2,2,0,0,4}; radio.write(&tx,sizeof(tx)); break;
+      case 'l': tx = {2,3,0,0,0}; radio.write(&tx,sizeof(tx)); break;
+      case 't': tx = {2,4,0,0,0}; radio.write(&tx,sizeof(tx)); break;
+      case '?': tx = {2,0,0,0,0}; radio.write(&tx,sizeof(tx)); Serial.println("PING"); break;
+      case 'h': Serial.println("w/s/a/d c r 1 2 3 4 l t ? h"); break;
+    }
+  }
+  delay(20);
+}
